@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS wger_exercise_media (
     url TEXT NOT NULL,
     is_main BOOLEAN NOT NULL DEFAULT FALSE,
     style TEXT,
-    duration INTEGER,
+    duration NUMERIC,
     width INTEGER,
     height INTEGER,
     codec TEXT,
