@@ -1,122 +1,169 @@
 # 康复 / 健身 App 数据层
 
-当前仓库已加入 **wger 公共运动数据接入层**，用于为 App 提供动作、肌肉、器械、动作图片、动作视频和多语言动作说明等基础数据。
+当前仓库为康复 / 体态 / 健身 App 提供两层基础数据：
 
-## 当前状态
+- **wger**：动作、动作翻译、肌肉、器械、图片与视频等通用健身数据
+- **Z-Anatomy**：TA2 解剖术语、可点击 3D 人体结构以及与 wger 肌肉的映射
 
-- Supabase 项目已连接并创建 9 张 wger / 康复数据表
-- 所有公开表已启用 RLS
-- App 端只能读取基础动作数据，不能直接修改
-- `wger_sync_state` 仅供后台同步使用
-- GitHub Actions 已加入手动 + 每周自动同步工作流
+App 自己维护康复语义与教学内容，不会在上游同步时被覆盖。
 
-## 已加入的内容
+## 当前线上状态
+
+Supabase 已完成自动化同步，不需要在手机或 GitHub 中配置 `DATABASE_URL`。
+
+### wger
+
+当前数据库已同步：
+
+- 861 个动作
+- 15 个 wger 肌肉分类
+- 12 类器械
+- 3324 条多语言动作说明
+- 443 个图片 / 视频媒体记录
+
+`sync-wger` Supabase Edge Function 负责更新，Supabase Cron 每周自动执行。
+
+### Z-Anatomy
+
+当前数据库已同步：
+
+- 7297 条 TA2 解剖术语 / 原始 code
+- 7 个移动端 / Web 可加载的 GLB 人体系统层
+- 2914 个独立可点击 3D mesh
+- 2806 个 mesh 已通过唯一英文名称精确映射到 TA2
+- 当前 15 个 wger 肌肉分类全部已经连接到对应的可点击 Z-Anatomy 肌肉 mesh
+
+七个 3D 系统层：
+
+- muscular
+- skeletal
+- joints
+- cardiovascular
+- nervous
+- lymphatic
+- visceral / internal organs
+
+GLB 已复制进本项目 Supabase Storage 的公开 `anatomy-assets` bucket，App 不需要运行 Blender，也不依赖运行时从第三方 GitHub 加载模型。
+
+## App 自有康复字段
+
+`rehab_exercise_metadata` 与 wger 上游数据分开，现支持用户自己撰写的 plain text：
+
+- `activation`
+- `release`
+- `mobility`
+- `animation`
+- `progression`
+- `regression`
+- `posture_tags_text`
+- `difficulty_text`
+- `common_mistakes_text`
+- `contraindications_text`
+
+同时保留结构化字段用于搜索、筛选和排序：
+
+- `posture_tags TEXT[]`
+- `difficulty SMALLINT`
+- `common_mistakes TEXT[]`
+- `contraindications TEXT[]`
+- `training_types TEXT[]`
+- `body_regions TEXT[]`
+- `activation_targets TEXT[]`
+- `release_targets TEXT[]`
+
+这样可以既写自然语言康复说明，又能让 App 做诸如“骨盆前倾 + 初级 + 激活”这样的结构化查询。
+
+## 3D 人体图的数据链
+
+前端人体图应按以下关系工作：
+
+```text
+GLB node click
+  ↓
+z_anatomy_meshes
+  ↓
+z_anatomy_wger_muscle_map
+  ↓
+wger_muscles
+  ↓
+wger_exercise_muscles
+  ↓
+wger_exercises + translations + media
+  ↓
+rehab_exercise_metadata
+```
+
+因此用户点击一个 3D 肌肉 mesh 后，可以继续显示：
+
+- 目标肌肉 / 解剖名称
+- activation
+- release
+- mobility
+- posture tags
+- difficulty
+- animation
+- common mistakes
+- contraindications
+- progression
+- regression
+- 对应训练动作、图片与视频
+
+## Z-Anatomy 相关表
+
+- `z_anatomy_terms`：保留原始 TA2 code，包括 `911*18`、`1140*1` 这类复合编号
+- `z_anatomy_assets`：3D 资产来源、版本、Storage URL、许可证和署名
+- `z_anatomy_meshes`：GLB 中的独立可点击节点、左右侧、TA2 映射
+- `z_anatomy_wger_muscle_map`：Z-Anatomy mesh / TA2 与 wger 肌肉之间的桥接
+- `z_anatomy_sync_state`：后台同步状态，客户端不可访问
+- `z_anatomy_sync_config`：后台同步凭据，客户端不可访问
+
+相关 SQL：
+
+- `database/z_anatomy_integration.sql`
+- `database/z_anatomy_wger_seed.sql`
+
+## wger 相关表
+
+- `wger_muscles`
+- `wger_equipment`
+- `wger_exercises`
+- `wger_exercise_translations`
+- `wger_exercise_muscles`
+- `wger_exercise_equipment`
+- `wger_exercise_media`
+- `rehab_exercise_metadata`
+- `wger_sync_state`
+
+相关 SQL：
 
 - `database/wger_schema.sql`
-  - wger 动作
-  - 动作翻译
-  - 肌肉
-  - 器械
-  - 动作-肌肉关联
-  - 动作-器械关联
-  - 图片 / 视频媒体
-  - App 自有康复字段 `rehab_exercise_metadata`
-  - 同步状态记录
 - `database/wger_security.sql`
-  - Supabase RLS 和只读权限策略
-- `scripts/sync_wger.py`
-  - 从 wger `/api/v2/` 公共 API 分页同步数据
-  - 使用 `exerciseinfo` 一次获取动作及其肌肉、器械、翻译、图片和视频
-  - 使用 upsert，重复运行不会创建重复动作
-  - 不覆盖 App 自己维护的康复标签
-- `.github/workflows/sync-wger.yml`
-  - 支持 GitHub Actions 手动同步
-  - 每周自动同步一次
-- `.env.example`
-  - 数据库与 wger API 配置
-- `requirements-wger.txt`
-  - PostgreSQL 驱动
 
-## 只需完成一次：设置 GitHub DATABASE_URL
+## 安全
 
-要让 GitHub Actions 真正把 wger 数据写入 Supabase，需要给仓库添加数据库连接字符串作为 Secret。
+- 所有客户端可访问的数据表均启用 RLS
+- App 端只读取基础动作 / 解剖 / 康复内容
+- 同步 token、同步配置和同步状态不对 `anon` / `authenticated` 暴露
+- 后台 Edge Function 使用服务器侧密钥写入数据库
+- 不在前端、README 或公开代码里保存 secret / service key / 数据库密码
 
-1. 打开 Supabase 项目。
-2. 点击 **Connect**，复制 PostgreSQL connection string。建议使用适合持久连接或 CI 的连接方式，并确认密码已填入连接串。
-3. 打开 GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions**。
-4. 点击 **New repository secret**。
-5. Name 填：`DATABASE_URL`
-6. Secret 填刚刚复制的 Supabase PostgreSQL connection string。
-7. 保存。
+## 第三方许可证
 
-然后打开 GitHub 仓库 → **Actions** → **Sync wger data** → **Run workflow**。
+Z-Anatomy、BodyParts3D、wger 与 GLB 派生资产的来源及署名要求记录在：
 
-成功后数据库会开始出现动作、肌肉、器械、动作翻译和媒体记录。之后工作流每周自动刷新一次。
+`THIRD_PARTY_NOTICES.md`
 
-> 不要把 DATABASE_URL 直接写进 README、代码、`.env.example` 或任何公开文件。它包含数据库凭据。
+第三方模型资产与 App 自有康复文本保持分层。发布或重新分发新的第三方资产前，应检查对应资产的具体来源与许可信息。
 
-## 数据结构思路
+## 当前缺少的部分
 
-wger 负责通用健身数据，App 自己负责康复语义。这样以后可以在同一个动作上增加：
+这个 GitHub 仓库目前主要是**数据层**，还没有正式的移动端 / Web App 前端代码。因此 3D 数据和动作数据已经可以查询，但“旋转人体、点击肌肉、高亮、弹出动作卡片”等交互需要在实际 App 前端代码进入仓库后接上渲染器。
 
-- 激活 / 松解 / 强化 / 拉伸
-- 身体区域
-- 圆肩、头前伸、骨盆前倾等体态标签
-- 常见错误
-- 禁忌与注意事项
-- 推荐组数 / 次数
-- App 自有中文名称
-- App 自有动图或视频
+建议的页面实现顺序：
 
-这些字段都存放在 `rehab_exercise_metadata`，同步 wger 时不会被覆盖。
-
-## 本地同步（可选）
-
-如果不使用 GitHub Actions，也可以本地执行：
-
-```bash
-pip install -r requirements-wger.txt
-export DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/DATABASE'
-export WGER_BASE_URL='https://wger.de'
-python scripts/sync_wger.py --dry-run
-python scripts/sync_wger.py
-```
-
-## App 查询示例
-
-查某块肌肉对应的动作：
-
-```sql
-SELECT
-    e.id,
-    t.name,
-    em.role
-FROM wger_exercises e
-JOIN wger_exercise_muscles em ON em.exercise_id = e.id
-JOIN wger_muscles m ON m.id = em.muscle_id
-JOIN wger_exercise_translations t ON t.exercise_id = e.id
-WHERE m.id = $1;
-```
-
-查某种体态问题对应的 App 康复动作：
-
-```sql
-SELECT
-    e.id,
-    r.name_zh_override,
-    r.training_types,
-    r.posture_tags
-FROM rehab_exercise_metadata r
-JOIN wger_exercises e ON e.id = r.exercise_id
-WHERE '骨盆前倾' = ANY(r.posture_tags);
-```
-
-## 下一步
-
-当 App 主体代码进入本仓库后，可以继续把这些表接到：
-
-1. 人体肌肉图点击交互
-2. 动作详情页
-3. 今日训练计划
-4. 激活 / 松解 / 强化筛选
-5. App 自有动图与动作纠错内容
+1. 3D 人体图加载 `muscular.glb`
+2. 点击 mesh 并高亮
+3. 根据 mesh 查询对应 wger 肌肉与动作
+4. 动作详情读取康复 plain text 字段
+5. 增加 activation / release / mobility 分类
+6. 将动作加入今日训练与训练日历
