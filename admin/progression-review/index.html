@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Progression Review</title>
+  <style>
+    :root{color-scheme:dark;--bg:#070a08;--panel:#111612;--line:#273128;--green:#b7ff2a;--muted:#9aa49b;--red:#ff7272}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#eef5ee;font:14px system-ui,-apple-system,sans-serif}
+    header{position:sticky;top:0;background:#090d0a;padding:18px 22px;border-bottom:1px solid var(--line);z-index:3}
+    h1{margin:0;color:var(--green);font-size:22px}.sub,.meta{color:var(--muted)}.wrap{max-width:1280px;margin:auto;padding:20px}
+    .panel,.edge{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input,select{background:#0b0f0c;color:#eef5ee;border:1px solid #344035;border-radius:9px;padding:9px 11px}
+    button{cursor:pointer}button.primary{background:var(--green);color:#0a0c0a;border-color:var(--green);font-weight:700}button.danger{border-color:#7b3434;color:#ffb0b0}.hidden{display:none}
+    .compare{display:grid;grid-template-columns:1fr 44px 1fr;gap:12px}.card{background:#0c110d;border:1px solid #253026;border-radius:12px;padding:12px}.name{font-size:17px;font-weight:700}
+    .arrow{display:flex;align-items:center;justify-content:center;color:var(--green);font-size:24px}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.chip{border:1px solid #354337;border-radius:999px;padding:3px 7px;font-size:12px}
+    .vector{display:grid;grid-template-columns:repeat(4,minmax(75px,1fr));gap:6px;margin-top:9px}.metric{background:#080b09;border-radius:7px;padding:6px}.reason{margin:12px 0}.AUTO_SUGGESTED{color:#ffd86f}.REVIEWED{color:var(--green)}.REJECTED{color:var(--red)}
+    #graphSvg{width:100%;min-height:520px;background:#090d0a;border:1px solid var(--line);border-radius:12px}.issue{padding:10px;border-bottom:1px solid var(--line)}pre{white-space:pre-wrap;word-break:break-word}
+    @media(max-width:760px){.compare{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.vector{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<header><h1>Progression Review</h1><div class="sub">GLUTE + HIP · AUTO_SUGGESTED edges never reach users</div></header>
+<main class="wrap">
+  <div id="auth" class="panel"><div class="row"><input id="email" type="email" placeholder="Admin email"><button id="login">Send magic link</button><span id="authMsg" class="meta"></span></div></div>
+  <div id="app" class="hidden">
+    <div class="panel row"><button data-tab="review">Review</button><button data-tab="graph">Graph</button><button data-tab="validation">Validation</button><span id="stats" class="meta"></span><button id="logout">Log out</button></div>
+    <section id="review"><div class="panel row"><select id="status"><option>AUTO_SUGGESTED</option><option>REVIEWED</option><option>REJECTED</option><option>ALL</option></select><select id="rtype"><option>ALL</option><option>PROGRESSION</option><option>REGRESSION</option><option>ALTERNATIVE</option><option>PREPARATION</option><option>ACTIVATION</option><option>MOBILITY</option><option>RELEASE</option></select><select id="family"><option>ALL</option><option>GLUTE</option><option>HIP</option></select><button id="refresh">Refresh</button></div><div id="edges"></div></section>
+    <section id="graph" class="hidden"><div class="panel row"><input id="rootId" type="number" value="265"><label><input id="pendingGraph" type="checkbox" checked> include pending</label><button id="loadGraph">Load graph</button></div><div class="panel"><svg id="graphSvg" viewBox="0 0 1100 520"></svg><div id="graphList"></div></div></section>
+    <section id="validation" class="hidden"><div class="panel"><button id="loadValidation">Run graph checks</button><div id="issues"></div></div></section>
+  </div>
+</main>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.0/+esm'
+const cfg={
+  url:'https://nkqoryqioekqhcazwcfz.supabase.co',
+  key:'sb_publishable_zY6D7sulHPLO1BeKPR6jng_ppwe4nAQ',
+  api:'https://nkqoryqioekqhcazwcfz.supabase.co/functions/v1/progression-admin'
+}
+const sb=createClient(cfg.url,cfg.key,{auth:{persistSession:true,detectSessionInUrl:true}})
+const $=id=>document.getElementById(id)
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+
+async function call(action,payload={}){
+  const session=(await sb.auth.getSession()).data.session
+  if(!session) throw Error('Sign in first')
+  const response=await fetch(cfg.api,{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+session.access_token},body:JSON.stringify({action,...payload})})
+  const json=await response.json()
+  if(!response.ok) throw Error(json.error||'Request failed')
+  return json
+}
+function profileCard(p){
+  if(!p)return'<div class="card">Missing profile</div>'
+  const metrics=[['STR',p.strength_demand],['STAB',p.stability_demand],['COORD',p.coordination_demand],['BAL',p.balance_demand],['ROM',p.rom_demand],['MOB',p.mobility_demand],['LOAD',p.load_potential]]
+  return '<div class="card"><div class="name">'+esc(p.name_en||'#'+p.exercise_id)+'</div><div class="meta">#'+p.exercise_id+' · '+esc(p.movement_family||'')+' · '+esc(p.movement_pattern||'')+'</div><div class="chips">'+(p.primary_muscles||[]).map(x=>'<span class="chip">'+esc(x)+'</span>').join('')+(p.equipment||[]).map(x=>'<span class="chip">⚙ '+esc(x)+'</span>').join('')+'</div><div class="vector">'+metrics.map(x=>'<div class="metric">'+x[0]+': <b>'+(x[1]??'–')+'</b></div>').join('')+'</div></div>'
+}
+async function loadStats(){
+  const j=await call('stats')
+  $('stats').textContent='Profiles '+j.profiles+' · '+Object.entries(j.by_status).map(([k,v])=>k+' '+v).join(' · ')
+}
+async function refresh(){
+  const j=await call('list',{status:$('status').value,type:$('rtype').value,family:$('family').value})
+  $('edges').innerHTML=j.edges.map(e=>'<div class="edge"><div class="compare">'+profileCard(j.profiles[e.from_exercise_id])+'<div class="arrow">→</div>'+profileCard(j.profiles[e.to_exercise_id])+'</div><div class="row" style="margin-top:10px"><b>'+e.relationship_type+'</b><b class="'+e.review_status+'">'+e.review_status+'</b><span class="chips">'+(e.progression_dimension||[]).map(x=>'<span class="chip">'+x+'</span>').join('')+'</span><span>confidence '+(e.confidence??'–')+'</span><span>evidence '+(e.evidence_level??'–')+'</span></div><div class="reason">'+esc(e.ai_reason||'')+'</div><div class="row"><button class="primary" data-approve="'+e.id+'">APPROVE</button><button class="danger" data-reject="'+e.id+'">REJECT</button><button data-edit="'+e.id+'">EDIT</button></div></div>').join('')||'<div class="panel">No relationships</div>'
+  document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=async()=>{await call('review',{review_action:'APPROVE',relationship_id:+b.dataset.approve});await refresh()})
+  document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=async()=>{await call('review',{review_action:'REJECT',relationship_id:+b.dataset.reject,rejection_reason:prompt('Optional rejection reason')||null});await refresh()})
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const raw=prompt('Edit JSON, for example {"progression_dimension":["LOAD"],"confidence":0.9,"notes":"..."}','{}');if(raw){await call('review',{review_action:'EDIT',relationship_id:+b.dataset.edit,patch:JSON.parse(raw)});await refresh()}})
+  await loadStats()
+}
+async function graph(){
+  const j=await call('graph',{include_pending:$('pendingGraph').checked}),root=+$('rootId').value||265
+  const relevant=j.edges.filter(e=>e.from_exercise_id===root||e.to_exercise_id===root),out=relevant.filter(e=>e.from_exercise_id===root)
+  $('graphList').innerHTML=relevant.map(e=>'<div class="issue">'+esc(j.profiles[e.from_exercise_id]?.name_en)+' → '+esc(j.profiles[e.to_exercise_id]?.name_en)+' · '+e.relationship_type+' · '+(e.progression_dimension||[]).join('/')+' · '+e.review_status+'</div>').join('')
+  let svg='<rect x="420" y="25" width="260" height="54" rx="12" fill="#182118" stroke="#b7ff2a"/><text x="550" y="58" text-anchor="middle" fill="#eef5ee">'+esc(j.profiles[root]?.name_en||'#'+root)+'</text>'
+  out.forEach((e,i)=>{const x=80+(i%4)*270,y=150+Math.floor(i/4)*120,n=j.profiles[e.to_exercise_id]?.name_en||'#'+e.to_exercise_id;svg+='<line x1="550" y1="79" x2="'+(x+110)+'" y2="'+y+'" stroke="#4e6150"/><rect x="'+x+'" y="'+y+'" width="220" height="64" rx="10" fill="#111612" stroke="'+(e.review_status==='REVIEWED'?'#b7ff2a':'#6a6337')+'"/><text x="'+(x+110)+'" y="'+(y+25)+'" text-anchor="middle" fill="#eef5ee" font-size="13">'+esc(n).slice(0,28)+'</text><text x="'+(x+110)+'" y="'+(y+47)+'" text-anchor="middle" fill="#9aa49b" font-size="11">'+e.relationship_type+' '+(e.progression_dimension||[]).join('/')+'</text>'})
+  $('graphSvg').innerHTML=svg
+}
+async function validation(){
+  const j=await call('validation')
+  $('issues').innerHTML=j.issues.map(x=>'<div class="issue"><b>'+x.issue_type+'</b> · exercise '+x.exercise_id+'<pre>'+esc(JSON.stringify(x.details,null,2))+'</pre></div>').join('')||'<div class="issue">No issues</div>'
+}
+$('login').onclick=async()=>{
+  const {error}=await sb.auth.signInWithOtp({email:$('email').value.trim(),options:{emailRedirectTo:location.href}})
+  $('authMsg').textContent=error?error.message:'Magic link sent'
+}
+$('logout').onclick=async()=>{await sb.auth.signOut();location.reload()}
+$('refresh').onclick=refresh;$('loadGraph').onclick=graph;$('loadValidation').onclick=validation
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{['review','graph','validation'].forEach(id=>$(id).classList.add('hidden'));$(b.dataset.tab).classList.remove('hidden')})
+const session=(await sb.auth.getSession()).data.session
+if(session){$('auth').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(e){$('edges').innerHTML='<div class="panel">'+esc(e.message)+'</div>'}}
+</script>
+</body></html>
