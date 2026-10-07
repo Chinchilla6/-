@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -23,15 +23,16 @@
 <header><h1>Progression Review</h1><div class="sub">GLUTE + HIP · AUTO_SUGGESTED edges never reach users</div></header>
 <main class="wrap">
   <div id="auth" class="panel"><div class="row"><input id="email" type="email" placeholder="Admin email"><button id="login">Send magic link</button><span id="authMsg" class="meta"></span></div></div>
-  <div id="app" class="hidden">
+  <div id="error" role="alert" class="panel hidden"></div><div id="app" class="hidden">
     <div class="panel row"><button data-tab="review">Review</button><button data-tab="graph">Graph</button><button data-tab="validation">Validation</button><span id="stats" class="meta"></span><button id="logout">Log out</button></div>
     <section id="review"><div class="panel row"><select id="status"><option>AUTO_SUGGESTED</option><option>REVIEWED</option><option>REJECTED</option><option>ALL</option></select><select id="rtype"><option>ALL</option><option>PROGRESSION</option><option>REGRESSION</option><option>ALTERNATIVE</option><option>PREPARATION</option><option>ACTIVATION</option><option>MOBILITY</option><option>RELEASE</option></select><select id="family"><option>ALL</option><option>GLUTE</option><option>HIP</option></select><button id="refresh">Refresh</button></div><div id="edges"></div></section>
-    <section id="graph" class="hidden"><div class="panel row"><input id="rootId" type="number" value="265"><label><input id="pendingGraph" type="checkbox" checked> include pending</label><button id="loadGraph">Load graph</button></div><div class="panel"><svg id="graphSvg" viewBox="0 0 1100 520"></svg><div id="graphList"></div></div></section>
+    <section id="graph" class="hidden"><div class="panel row"><input id="rootId" type="number" placeholder="动作 ID（留空显示完整图）"><label><input id="pendingGraph" type="checkbox" checked> include pending</label><button id="loadGraph">Load graph</button></div><div class="panel"><svg id="graphSvg" viewBox="0 0 1100 520"></svg><div id="graphList"></div></div></section>
     <section id="validation" class="hidden"><div class="panel"><button id="loadValidation">Run graph checks</button><div id="issues"></div></div></section>
   </div>
 </main>
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.0/+esm'
+import { layoutGraph } from './graph.mjs'
 const cfg={
   url:'https://nkqoryqioekqhcazwcfz.supabase.co',
   key:'sb_publishable_zY6D7sulHPLO1BeKPR6jng_ppwe4nAQ',
@@ -44,7 +45,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 async function call(action,payload={}){
   const session=(await sb.auth.getSession()).data.session
   if(!session) throw Error('Sign in first')
-  const response=await fetch(cfg.api,{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+session.access_token},body:JSON.stringify({action,...payload})})
+  const response=await fetch(cfg.api,{method:'POST',headers:{'content-type':'application/json','apikey':cfg.key,'authorization':'Bearer '+session.access_token},body:JSON.stringify({action,...payload})})
   const json=await response.json()
   if(!response.ok) throw Error(json.error||'Request failed')
   return json
@@ -60,19 +61,22 @@ async function loadStats(){
 }
 async function refresh(){
   const j=await call('list',{status:$('status').value,type:$('rtype').value,family:$('family').value})
-  $('edges').innerHTML=j.edges.map(e=>'<div class="edge"><div class="compare">'+profileCard(j.profiles[e.from_exercise_id])+'<div class="arrow">→</div>'+profileCard(j.profiles[e.to_exercise_id])+'</div><div class="row" style="margin-top:10px"><b>'+e.relationship_type+'</b><b class="'+e.review_status+'">'+e.review_status+'</b><span class="chips">'+(e.progression_dimension||[]).map(x=>'<span class="chip">'+x+'</span>').join('')+'</span><span>confidence '+(e.confidence??'–')+'</span><span>evidence '+(e.evidence_level??'–')+'</span></div><div class="reason">'+esc(e.ai_reason||'')+'</div><div class="row"><button class="primary" data-approve="'+e.id+'">APPROVE</button><button class="danger" data-reject="'+e.id+'">REJECT</button><button data-edit="'+e.id+'">EDIT</button></div></div>').join('')||'<div class="panel">No relationships</div>'
-  document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=async()=>{await call('review',{review_action:'APPROVE',relationship_id:+b.dataset.approve});await refresh()})
+  $('edges').innerHTML=j.edges.map(e=>'<div class="edge"><div class="compare">'+profileCard(j.profiles[e.from_exercise_id])+'<div class="arrow">→</div>'+profileCard(j.profiles[e.to_exercise_id])+'</div><div class="row" style="margin-top:10px"><b>'+e.relationship_type+'</b><b class="'+e.review_status+'">'+e.review_status+'</b><span class="chips">'+(e.progression_dimension||[]).map(x=>'<span class="chip">'+x+'</span>').join('')+'</span><span>confidence '+(e.confidence??'–')+'</span><span>evidence '+(e.evidence_level??'–')+'</span></div><div class="reason">'+esc(e.ai_reason||'')+'<details><summary>准入条件 / 禁忌 / 证据 / 动作差异</summary><pre>'+esc(JSON.stringify({required_conditions:e.required_conditions,contraindications:e.contraindications,evidence_source:e.evidence_source,difficulty_delta:e.difficulty_delta,notes:e.notes},null,2))+'</pre></details></div><div class="row"><button class="primary" data-approve="'+e.id+'">APPROVE</button><button class="danger" data-reject="'+e.id+'">REJECT</button><button data-audit="'+e.id+'">审核记录</button><button data-edit="'+e.id+'">EDIT</button></div></div>').join('')||'<div class="panel">No relationships</div>'
+  document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=async()=>{if(!confirm('确认已人工核对动作关系、准入条件和禁忌，并批准用于用户训练？'))return;await call('review',{review_action:'APPROVE',relationship_id:+b.dataset.approve});await refresh()})
   document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=async()=>{await call('review',{review_action:'REJECT',relationship_id:+b.dataset.reject,rejection_reason:prompt('Optional rejection reason')||null});await refresh()})
-  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const raw=prompt('Edit JSON, for example {"progression_dimension":["LOAD"],"confidence":0.9,"notes":"..."}','{}');if(raw){await call('review',{review_action:'EDIT',relationship_id:+b.dataset.edit,patch:JSON.parse(raw)});await refresh()}})
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{const e=j.edges.find(e=>e.id===+b.dataset.edit);const raw=prompt('编辑后恢复待审核；修改以下 JSON',JSON.stringify(Object.fromEntries(['relationship_type','progression_dimension','difficulty_delta','required_conditions','contraindications','confidence','evidence_level','evidence_source','notes'].map(k=>[k,e[k]])),null,2));if(raw){await call('review',{review_action:'EDIT',relationship_id:+b.dataset.edit,patch:JSON.parse(raw)});await refresh()}})
+  document.querySelectorAll('[data-audit]').forEach(b=>b.onclick=async()=>{const j=await call('audit',{relationship_id:+b.dataset.audit});alert(JSON.stringify(j.events,null,2))})
   await loadStats()
 }
 async function graph(){
-  const j=await call('graph',{include_pending:$('pendingGraph').checked}),root=+$('rootId').value||265
-  const relevant=j.edges.filter(e=>e.from_exercise_id===root||e.to_exercise_id===root),out=relevant.filter(e=>e.from_exercise_id===root)
-  $('graphList').innerHTML=relevant.map(e=>'<div class="issue">'+esc(j.profiles[e.from_exercise_id]?.name_en)+' → '+esc(j.profiles[e.to_exercise_id]?.name_en)+' · '+e.relationship_type+' · '+(e.progression_dimension||[]).join('/')+' · '+e.review_status+'</div>').join('')
-  let svg='<rect x="420" y="25" width="260" height="54" rx="12" fill="#182118" stroke="#b7ff2a"/><text x="550" y="58" text-anchor="middle" fill="#eef5ee">'+esc(j.profiles[root]?.name_en||'#'+root)+'</text>'
-  out.forEach((e,i)=>{const x=80+(i%4)*270,y=150+Math.floor(i/4)*120,n=j.profiles[e.to_exercise_id]?.name_en||'#'+e.to_exercise_id;svg+='<line x1="550" y1="79" x2="'+(x+110)+'" y2="'+y+'" stroke="#4e6150"/><rect x="'+x+'" y="'+y+'" width="220" height="64" rx="10" fill="#111612" stroke="'+(e.review_status==='REVIEWED'?'#b7ff2a':'#6a6337')+'"/><text x="'+(x+110)+'" y="'+(y+25)+'" text-anchor="middle" fill="#eef5ee" font-size="13">'+esc(n).slice(0,28)+'</text><text x="'+(x+110)+'" y="'+(y+47)+'" text-anchor="middle" fill="#9aa49b" font-size="11">'+e.relationship_type+' '+(e.progression_dimension||[]).join('/')+'</text>'})
-  $('graphSvg').innerHTML=svg
+ const j=await call('graph',{include_pending:$('pendingGraph').checked}),root=$('rootId').value.trim()?+$('rootId').value:null
+ const g=layoutGraph(j.edges,j.profiles,root),pos=new Map(g.nodes.map(n=>[n.id,n]))
+ $('graphSvg').setAttribute('viewBox','0 0 '+g.width+' '+g.height);$('graphSvg').style.minHeight=g.height+'px'
+ let svg='<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#829b83"/></marker></defs>'
+ for(const e of g.edges){const a=pos.get(e.from_exercise_id),b=pos.get(e.to_exercise_id);svg+='<path d="M'+(a.x+105)+' '+(a.y+28)+' Q'+((a.x+b.x)/2+105)+' '+((a.y+b.y)/2-50)+' '+(b.x+105)+' '+(b.y+28)+'" fill="none" stroke="'+(e.review_status==='REVIEWED'?'#b7ff2a':'#8c7955')+'" stroke-opacity=".5" marker-end="url(#arrow)"><title>'+esc(e.relationship_type+' · '+e.review_status)+'</title></path>'}
+ for(const n of g.nodes)svg+='<g><rect x="'+n.x+'" y="'+n.y+'" width="210" height="58" rx="8" fill="#111612" stroke="#536654"/><text x="'+(n.x+8)+'" y="'+(n.y+23)+'" fill="#eef5ee" font-size="12">'+esc(n.label.slice(0,27))+'</text><text x="'+(n.x+8)+'" y="'+(n.y+43)+'" fill="#9aa49b" font-size="11">#'+n.id+' '+esc(j.profiles[n.id]?.movement_pattern||'')+'</text><title>'+esc(n.label)+'</title></g>'
+ $('graphSvg').innerHTML=svg
+ $('graphList').innerHTML='<p>'+g.nodes.length+' 个节点 · '+g.edges.length+' 条关系（绿色已审核，棕色待审核）</p>'+g.edges.map(e=>'<div class="issue">'+esc(j.profiles[e.from_exercise_id]?.name_en)+' → '+esc(j.profiles[e.to_exercise_id]?.name_en)+' · '+esc(e.relationship_type)+' · '+esc(e.review_status)+'</div>').join('')
 }
 async function validation(){
   const j=await call('validation')
@@ -87,5 +91,7 @@ $('refresh').onclick=refresh;$('loadGraph').onclick=graph;$('loadValidation').on
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{['review','graph','validation'].forEach(id=>$(id).classList.add('hidden'));$(b.dataset.tab).classList.remove('hidden')})
 const session=(await sb.auth.getSession()).data.session
 if(session){$('auth').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(e){$('edges').innerHTML='<div class="panel">'+esc(e.message)+'</div>'}}
+window.addEventListener('unhandledrejection',e=>{$('error').textContent=e.reason?.message||'操作失败';$('error').classList.remove('hidden')})
 </script>
 </body></html>
+
