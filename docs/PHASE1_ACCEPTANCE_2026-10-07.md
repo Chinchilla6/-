@@ -60,11 +60,15 @@ The current user is inferred from Auth when `p_user_id` is omitted. Engine decis
 - New SQL suite: **passed**, edge conditions including RPE/missing/malformed inputs, three-node cycles, cycle approval denial, edit reset, session-count gate, exhausted loaded progression, latest pain, audit actor, KEEP, reviewed-only regression/alternative, rejected alternative exclusion, relationship/feedback RLS and direct-RPC privilege isolation.
 - UI module syntax: **passed**.
 - Deployed unauthenticated POST: **401 Authentication required**.
+- GitHub Actions CI run `37623311555`: **success**, all 14 tests passed on the committed code.
+- GitHub Pages deployment run `37623311663`: **failed** at Configure Pages because this repository has no enabled Pages site. The previous deployment had the same failure. The connected GitHub App lacks administration access, so enabling the site is an external prerequisite. The UI code is committed, but the public page, visual/browser acceptance and email login round trip are **not yet verified**.
 - Every synthetic approval/user/feedback record from SQL tests was rolled back. Final relationship state remains 77 AUTO_SUGGESTED / 0 REVIEWED and zero production feedback.
 
 ## Human-review and security findings
 
 The designated reviewer account is provisioned with the admin role and still requires email verification through the login flow. No AI task has approved any production relationship.
+
+To finish hosted UI acceptance, the repository owner must open [Pages settings](https://github.com/Chinchilla6/-/settings/pages) and set Build and deployment → Source to GitHub Actions, then rerun the [deployment workflow](https://github.com/Chinchilla6/-/actions/workflows/deploy-progression-review.yml). The intended page is `https://chinchilla6.github.io/-/progression-review/`. In Supabase Auth URL Configuration, this exact page URL must be an allowed redirect destination; that setting cannot be inspected by the current MCP tools. Complete the email login round trip and verify list/graph/validation access after publishing. Do not count this phase as fully accepted until those checks pass. No token, password or service key should be pasted into chat.
 
 Graph validation currently reports 46 profiles without reviewed progression, 46 without reviewed regression and 77 relationships with an evidence level but no attached source. These are review/coverage findings, not database corruption. No production progression cycles or unsupported conditions were found. Candidate B/C evidence labels are provisional and must not be presented as verified clinical evidence until a human attaches/checks actual sources.
 

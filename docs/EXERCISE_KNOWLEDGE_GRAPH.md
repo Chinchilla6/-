@@ -1,5 +1,7 @@
 # Exercise Knowledge Graph · Phase 1
 
+Updated implementation and acceptance status: [2026-10-07 report](PHASE1_ACCEPTANCE_2026-10-07.md). Runtime now enforces edge-specific conditions, full graph/cycle checks and protected review API tests. GitHub Pages must be enabled before hosted UI/login acceptance; the Edge Function is deployed.
+
 ## Principle
 
 Exercise progression is a **reviewed graph, not an inferred ranking**.
@@ -110,10 +112,12 @@ The page provides:
 - AI reason, confidence and evidence level
 - APPROVE / REJECT / EDIT
 - optional rejection reason
-- one-hop graph visualization
+- full graph and connected-component visualization, including isolated classified profiles
 - graph validation view
 
 The public GET only serves the login page/UI shell. Every POST API action validates the Supabase bearer token server-side and requires `user.app_metadata.role = 'admin'` (or `is_admin=true`). The service key is never sent to the browser.
+
+The current GET redirects to the intended Pages login shell at `https://chinchilla6.github.io/-/progression-review/`. Publishing is pending owner enablement of GitHub Pages; see the acceptance report.
 
 At Phase 1 completion the project has no Auth users, so there is intentionally no human reviewer identity yet and therefore zero reviewed relationships. This is not bypassed by the implementation.
 
@@ -211,3 +215,4 @@ Process:
 5. Add CORE-specific graph validation and engine tests.
 
 Do not expand to all 934 exercises until the GLUTE/HIP review workflow has produced enough reviewed edges to validate the human-review workload and runtime selection behavior.
+
