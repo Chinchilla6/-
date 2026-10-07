@@ -22,7 +22,7 @@
 <body>
 <header><h1>Progression Review</h1><div class="sub">GLUTE + HIP · AUTO_SUGGESTED edges never reach users</div></header>
 <main class="wrap">
-  <div id="auth" class="panel"><div class="row"><input id="email" type="email" placeholder="Admin email"><button id="login">Send magic link</button><span id="authMsg" class="meta"></span></div></div>
+  <div id="auth" class="panel"><div class="row"><input id="email" type="email" placeholder="管理员邮箱" autocomplete="email"><button id="login">发送登录邮件</button><span id="authMsg" class="meta" role="status"></span></div><p class="meta">邮件链接失效或跳转失败时：重新发送邮件，不要点击邮件中的链接；复制新邮件中登录按钮的链接地址，粘贴到下面验证。若邮件提供验证码，也可直接输入。</p><div class="row"><input id="emailVerification" type="password" placeholder="新邮件登录链接或验证码" autocomplete="off" aria-label="新邮件登录链接或验证码" style="flex:1;min-width:240px"><button id="verifyEmail">验证并登录</button></div></div>
   <div id="error" role="alert" class="panel hidden"></div><div id="app" class="hidden">
     <div class="panel row"><button data-tab="review">Review</button><button data-tab="graph">Graph</button><button data-tab="validation">Validation</button><span id="stats" class="meta"></span><button id="logout">Log out</button></div>
     <section id="review"><div class="panel row"><select id="status"><option>AUTO_SUGGESTED</option><option>REVIEWED</option><option>REJECTED</option><option>ALL</option></select><select id="rtype"><option>ALL</option><option>PROGRESSION</option><option>REGRESSION</option><option>ALTERNATIVE</option><option>PREPARATION</option><option>ACTIVATION</option><option>MOBILITY</option><option>RELEASE</option></select><select id="family"><option>ALL</option><option>GLUTE</option><option>HIP</option></select><button id="refresh">Refresh</button></div><div id="edges"></div></section>
@@ -33,6 +33,7 @@
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.0/+esm'
 import { layoutGraph } from './graph.mjs'
+import { emailVerification } from './login.mjs'
 const cfg={
   url:'https://nkqoryqioekqhcazwcfz.supabase.co',
   key:'sb_publishable_zY6D7sulHPLO1BeKPR6jng_ppwe4nAQ',
@@ -83,14 +84,28 @@ async function validation(){
   $('issues').innerHTML=j.issues.map(x=>'<div class="issue"><b>'+x.issue_type+'</b> · exercise '+x.exercise_id+'<pre>'+esc(JSON.stringify(x.details,null,2))+'</pre></div>').join('')||'<div class="issue">No issues</div>'
 }
 $('login').onclick=async()=>{
-  const {error}=await sb.auth.signInWithOtp({email:$('email').value.trim(),options:{emailRedirectTo:location.href}})
-  $('authMsg').textContent=error?error.message:'Magic link sent'
+  $('login').disabled=true
+  try{
+    const {error}=await sb.auth.signInWithOtp({email:$('email').value.trim(),options:{emailRedirectTo:location.origin+location.pathname,shouldCreateUser:false}})
+    $('authMsg').textContent=error?error.message:'新登录邮件已发送；可复制邮件登录按钮的链接地址到下方验证'
+  }finally{$('login').disabled=false}
+}
+$('verifyEmail').onclick=async()=>{
+  $('verifyEmail').disabled=true
+  try{
+    const input=emailVerification($('emailVerification').value,$('email').value,cfg.url)
+    $('emailVerification').value=''
+    const {error}=await sb.auth.verifyOtp(input)
+    if(error){$('authMsg').textContent='验证未成功：'+error.message+'。请使用最新邮件中尚未点击的链接。';return}
+    await showApp()
+  }catch(e){$('authMsg').textContent=e.message}finally{$('verifyEmail').disabled=false}
 }
 $('logout').onclick=async()=>{await sb.auth.signOut();location.reload()}
 $('refresh').onclick=refresh;$('loadGraph').onclick=graph;$('loadValidation').onclick=validation
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{['review','graph','validation'].forEach(id=>$(id).classList.add('hidden'));$(b.dataset.tab).classList.remove('hidden')})
 const session=(await sb.auth.getSession()).data.session
-if(session){$('auth').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(e){$('edges').innerHTML='<div class="panel">'+esc(e.message)+'</div>'}}
+async function showApp(){$('auth').classList.add('hidden');$('app').classList.remove('hidden');try{await refresh()}catch(e){$('edges').innerHTML='<div class="panel">'+esc(e.message)+'</div>'}}
+if(session)await showApp()
 window.addEventListener('unhandledrejection',e=>{$('error').textContent=e.reason?.message||'操作失败';$('error').classList.remove('hidden')})
 </script>
 </body></html>

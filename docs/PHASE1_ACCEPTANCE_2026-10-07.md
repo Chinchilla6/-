@@ -1,5 +1,9 @@
 # Phase 1 acceptance — 2026-10-07
 
+## Hosting/login follow-up
+
+The owner enabled GitHub Pages with GitHub Actions. Deployment run `37623311663`, attempt 2, succeeded, and the published login page was verified in the browser at https://chinchilla6.github.io/-/progression-review/. The login email request succeeded. The owner reported that the email link was expired/invalid, so the login page now supports directly verifying a freshly copied email confirmation link or an email OTP without following its redirect. Parsing stays local and only accepts this project's Supabase verification URL and email sign-in action types; session issuance still uses Supabase `verifyOtp`, and the protected review API still checks the verified admin identity. No token or full login link should be sent in chat. The updated suite has **17 passing tests**. Authenticated admin UI acceptance remains pending the owner's fresh email verification. Historical failed deployment entries below describe the earlier state.
+
 ## Verified live inventory
 
 The requested candidate seed and original admin implementation already existed on main and in Supabase. They were reused, not seeded again.
